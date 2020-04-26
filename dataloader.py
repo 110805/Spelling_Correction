@@ -34,9 +34,7 @@ class Lang:
         else:
             self.word2count[word] += 1
 
-def sample_pair(f_name):
-    lang = Lang(f_name)
-    index = lang.addWord()
+def sample_pair(f_name, lang, index):
     n = random.sample(range(lang.n_voc), 1)
     voc = lang.data[n[0]]
     input_tensor = []
@@ -50,8 +48,11 @@ def sample_pair(f_name):
 
     return (torch.tensor(input_tensor, dtype=torch.long).view(-1, 1), torch.tensor(target_tensor, dtype=torch.long).view(-1, 1))
 
-'''   
-p = sample_pair('train.json')
-print(p[0])
-print(p[1])
-'''
+def sample(f_name):
+    lang = Lang(f_name)
+    index = lang.addWord()
+    return sample_pair(f_name, lang, index)
+
+#training_pairs = [sample('train.json') for i in range(75)]
+#print(training_pairs[0])
+
