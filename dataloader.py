@@ -1,6 +1,5 @@
 import json
 import torch
-import random
 
 SOS_token = 0
 EOS_token = 1
@@ -34,9 +33,8 @@ class Lang:
         else:
             self.word2count[word] += 1
 
-def sample_pair(lang):
-    n = random.sample(range(lang.n_groups), 1)
-    voc = lang.data[n[0]]
+def sample_pair(lang, i):
+    voc = lang.data[i]
     input_tensor = []
     target_tensor = []
     for word in voc['input']:
@@ -48,17 +46,11 @@ def sample_pair(lang):
 
     return (torch.tensor(input_tensor, dtype=torch.long).view(-1, 1), torch.tensor(target_tensor, dtype=torch.long).view(-1, 1))
 
+'''
 with open('train.json') as f:
     voc = json.load(f)
 
 lang = Lang()
 lang.addWord(voc)
 print(sample_pair(lang))
-
-
-
-
-
-
-
-
+'''
