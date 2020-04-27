@@ -6,24 +6,24 @@ SOS_token = 0
 EOS_token = 1
 
 class Lang:
-    def __init__(self, f_name):
-        with open(f_name) as f:
-            self.data = json.load(f)
+    def __init__(self):
+        self.data = {}
         self.word2index = {}
         self.word2count = {}
         self.index2word = {0: "SOS", 1: "EOS"}
         self.n_words = 2  # Count SOS and EOS
-        self.n_voc = 0 # count number of vocabularies
+        self.n_groups = 0 # count number of vocabularies
 
-    def addWord(self):
-        for voc in self.data:
-            for i in voc['input']:
+    def addWord(self, voc):
+        self.data = voc
+        for data in voc:
+            for i in data['input']:
                 self.add(i)
         
-            self.add(voc['target'])
-            self.n_voc += 1
+            self.add(data['target'])
+            self.n_groups += 1
 
-        return self.word2index       
+        return        
         
     def add(self, word):
         if word not in self.word2index:
@@ -34,25 +34,31 @@ class Lang:
         else:
             self.word2count[word] += 1
 
-def sample_pair(f_name, lang, index):
-    n = random.sample(range(lang.n_voc), 1)
+def sample_pair(lang):
+    n = random.sample(range(lang.n_groups), 1)
     voc = lang.data[n[0]]
     input_tensor = []
     target_tensor = []
     for word in voc['input']:
-        input_tensor.append(index[word])
+        input_tensor.append(lang.word2index[word])
 
     input_tensor.append(EOS_token)
-    target_tensor.append(index[voc['target']])
+    target_tensor.append(lang.word2index[voc['target']])
     target_tensor.append(EOS_token)
 
     return (torch.tensor(input_tensor, dtype=torch.long).view(-1, 1), torch.tensor(target_tensor, dtype=torch.long).view(-1, 1))
 
-def sample(f_name):
-    lang = Lang(f_name)
-    index = lang.addWord()
-    return sample_pair(f_name, lang, index)
+with open('train.json') as f:
+    voc = json.load(f)
 
-#training_pairs = [sample('train.json') for i in range(75)]
-#print(training_pairs[0])
+lang = Lang()
+lang.addWord(voc)
+print(sample_pair(lang))
+
+
+
+
+
+
+
 
