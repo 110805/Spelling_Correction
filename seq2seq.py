@@ -7,7 +7,9 @@ Original file is located at
     https://colab.research.google.com/github/110805/Spelling_Correction/blob/master/seq2seq.ipynb
 """
 
+from __future__ import unicode_literals, print_function, division
 from io import open
+import unicodedata
 import string
 import re
 import random
@@ -23,8 +25,6 @@ import matplotlib.ticker as ticker
 import numpy as np
 from os import system
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
-from dataloader import sample_pair
-from dataloader import Lang
 import json
 
 
@@ -51,10 +51,10 @@ SOS_token = 0
 EOS_token = 1
 #----------Hyper Parameters----------#
 hidden_size = 256
-vocab_size = 17703 #The number of words in vocabulary
+vocab_size = 28
 teacher_forcing_ratio = 0.7
 LR = 0.05
-MAX_LENGTH = 10
+MAX_LENGTH = 20
 
 ################################
 #Example inputs of compute_bleu
@@ -72,6 +72,31 @@ def compute_bleu(output, reference):
     else:
         weights = (0.25,0.25,0.25,0.25)
     return sentence_bleu([reference], output,weights=weights,smoothing_function=cc.method1)
+
+def asMinutes(s):
+    m = math.floor(s / 60)
+    s -= m * 60
+    return '%dm %ds' % (m, s)
+
+
+def timeSince(since, percent):
+    now = time.time()
+    s = now - since
+    es = s / (percent)
+    rs = es - s
+    return '%s (- %s)' % (asMinutes(s), asMinutes(rs))
+
+def sample_pair(i, Data):
+    input_tensor = []
+    target_tensor = []
+    
+    for input_char in Data[i][0]:
+        input_tensor.append(ord(input_char)-95)
+    
+    for target_char in Data[i][1]:
+        target_tensor.append(ord(target_char)-95)
+
+    return (torch.tensor(input_tensor, dtype=torch.long).view(-1, 1), torch.tensor(target_tensor, dtype=torch.long).view(-1, 1))
 
 #Encoder
 class EncoderRNN(nn.Module):
@@ -113,24 +138,19 @@ class DecoderRNN(nn.Module):
 
 def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion, max_length=MAX_LENGTH):
     encoder_hidden = encoder.initHidden()
-
     encoder_optimizer.zero_grad()
     decoder_optimizer.zero_grad()
 
     input_length = input_tensor.size(0)
     target_length = target_tensor.size(0)
 
-    encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
-
     loss = 0
 
     #----------sequence to sequence part for encoder----------#
     for ei in range(input_length):
         encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_hidden)
-        #encoder_outputs[ei] = encoder_output[0, 0]
 
     decoder_input = torch.tensor([[SOS_token]], device=device)
-
     decoder_hidden = encoder_hidden
 
     use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
@@ -163,44 +183,24 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 
     return loss.item() / target_length
 
-
-def asMinutes(s):
-    m = math.floor(s / 60)
-    s -= m * 60
-    return '%dm %ds' % (m, s)
-
-
-def timeSince(since, percent):
-    now = time.time()
-    s = now - since
-    es = s / (percent)
-    rs = es - s
-    return '%s (- %s)' % (asMinutes(s), asMinutes(rs))
-
-def evaluate(encoder, decoder, lang, input_string, max_length=MAX_LENGTH):
+def evaluate(encoder, decoder, input_string, max_length=MAX_LENGTH):
     with torch.no_grad():
         input_tensor = []
-        input_tensor.append(lang.word2index[input_string])
-        input_tensor.append(EOS_token)
-        
+        for input_char in input_string:
+            input_tensor.append(ord(input_char)-95)
+
         input_tensor = torch.tensor(input_tensor, dtype=torch.long).view(-1, 1)
     
         input_tensor = input_tensor.to(device)
         input_length = input_tensor.size()[0]
         encoder_hidden = encoder.initHidden()
 
-        encoder_outputs = torch.zeros(max_length, encoder.hidden_size, device=device)
-
         for ei in range(input_length):
-            encoder_output, encoder_hidden = encoder(input_tensor[ei],
-                                                     encoder_hidden)
+            encoder_output, encoder_hidden = encoder(input_tensor[ei], encoder_hidden)
 
         decoder_input = torch.tensor([[SOS_token]], device=device)  # SOS
-
         decoder_hidden = encoder_hidden
-
         decoded_words = []
-
         for di in range(max_length):
             decoder_output, decoder_hidden = decoder(
                 decoder_input, decoder_hidden)
@@ -209,44 +209,37 @@ def evaluate(encoder, decoder, lang, input_string, max_length=MAX_LENGTH):
             if topi.item() == EOS_token:
                 break
             else:
-                decoded_words.append(lang.index2word[topi.item()])
+                decoded_words.append(chr(topi.item()+95))
 
             decoder_input = topi.squeeze().detach()
 
-        return decoded_words
+        pred = ''
+        for i in range(len(decoded_words)):
+            pred += decoded_words[i]
+
+        return pred
 
 def evalTestdata(encoder, decoder):
-    with open('train.json') as f:
-        voc = json.load(f)
-
-    lang = Lang()
-    lang.addWord(voc)
     score = 0
     with open('test.json') as f:
         voc = json.load(f)
     
     for data in voc:
-        lang.add(data['input'][0])
-
-    for data in voc:
-        evaluate(encoder, decoder, lang, data['input'][0])
-        
-        output = evaluate(encoder1, decoder1, lang, data['input'][0])
+        output = evaluate(encoder, decoder, data['input'][0])
         #print('input: {}'.format(data['input'][0]))
         #print('target: {}'.format(data['target']))
         #print('pred: {}'.format(output))
         
         if len(output) != 0:
-            score += compute_bleu(output[0], data['target'])
+            score += compute_bleu(output, data['target'])
         else:
             score += compute_bleu('', data['target']) # predict empty string
         
         #print('--------------------')
-
     #print('BLEU-4 score:{}'.format(score/50))
     return score/50
-
-def trainIters(encoder, decoder, n_epochs, learning_rate=0.01):
+    
+def trainIters(encoder, decoder, n_epochs, learning_rate=LR):
     start = time.time()
     plot_losses = []
     BLEU_scores = []
@@ -255,17 +248,23 @@ def trainIters(encoder, decoder, n_epochs, learning_rate=0.01):
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
     decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
 
+    Data = []
     with open('train.json') as f:
-        voc = json.load(f)
+        Voc = json.load(f)
 
-    lang = Lang()
-    lang.addWord(voc)
-    training_pairs = [sample_pair(lang, i) for i in range(7461)]
+    for voc in Voc:
+        for i in range(len(voc['input'])):
+            group = []
+            group.append(voc['input'][i])
+            group.append(voc['target'])
+            Data.append(group)
+
+    training_pairs = [sample_pair(i, Data) for i in range(len(Data))]
     print('Finish sampling')
     criterion = nn.CrossEntropyLoss()
     
     for epoch in range(1, n_epochs + 1):
-        for iter in range(7461):
+        for iter in range(len(Data)):
             training_pair = training_pairs[iter]
             input_tensor = training_pair[0]
             target_tensor = training_pair[1]
@@ -277,14 +276,13 @@ def trainIters(encoder, decoder, n_epochs, learning_rate=0.01):
         
             epoch_loss += loss
 
-        epoch_loss_avg = epoch_loss / 7461
-        print('%s (%d %d%%) %.4f' % (timeSince(start, epoch / n_epochs),
-                                        epoch, epoch / n_epochs * 100, epoch_loss_avg))
-                                                
+        epoch_loss_avg = epoch_loss / len(Data) 
         plot_losses.append(epoch_loss_avg)
         epoch_loss = 0
-
-        BLEU_scores.append(evalTestdata(encoder, decoder))
+        bleu_score = evalTestdata(encoder, decoder)
+        BLEU_scores.append(bleu_score)
+        print('%s (%d %d%%) %.4f %.4f' % (timeSince(start, epoch / n_epochs),
+                                        epoch, epoch / n_epochs * 100, epoch_loss_avg, bleu_score))
 
     plt.figure(1)
     plt.plot(range(n_epochs), plot_losses)
