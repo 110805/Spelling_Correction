@@ -53,7 +53,7 @@ EOS_token = 1
 hidden_size = 256
 vocab_size = 28
 teacher_forcing_ratio = 0.7
-LR = 0.05
+LR = 0.01
 MAX_LENGTH = 20
 
 ################################
@@ -96,6 +96,7 @@ def sample_pair(i, Data):
     for target_char in Data[i][1]:
         target_tensor.append(ord(target_char)-95)
 
+    target_tensor.append(EOS_token)
     return (torch.tensor(input_tensor, dtype=torch.long).view(-1, 1), torch.tensor(target_tensor, dtype=torch.long).view(-1, 1))
 
 #Encoder
@@ -301,3 +302,30 @@ decoder1 = DecoderRNN(hidden_size, vocab_size).to(device)
 trainIters(encoder1, decoder1, 100)
 torch.save(encoder1.state_dict(), 'encoder.pkl')
 torch.save(decoder1.state_dict(), 'decoder.pkl')
+
+encoder = EncoderRNN(vocab_size, hidden_size).to(device)
+decoder = DecoderRNN(hidden_size, vocab_size).to(device)
+encoder.load_state_dict(torch.load('encoder.pkl'))
+decoder.load_state_dict(torch.load('decoder.pkl'))
+
+def eval(encoder, decoder):
+    score = 0
+    with open('new_test.json') as f:
+        voc = json.load(f)
+                            
+        for data in voc:
+            output = evaluate(encoder, decoder, data['input'][0])
+            print('input: {}'.format(data['input'][0]))
+            print('target: {}'.format(data['target']))
+            print('pred: {}'.format(output))
+                                                                            
+            if len(output) != 0:                                                        
+                score += compute_bleu(output, data['target'])
+            else:
+                score += compute_bleu('', data['target']) # predict empty string
+            
+            print('--------------------')
+        
+        print('BLEU-4 score:{}'.format(score/50))
+
+eval(encoder, decoder)
